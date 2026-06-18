@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PKU DDL Helper</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; margin: 30px 0; font-size: 24px; }
+    h1 span { color: #e74c3c; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .card h2 { font-size: 15px; margin-bottom: 14px; color: #666; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 13px; margin-bottom: 4px; color: #555; }
+    .form-group input, .form-group select { width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
+    .form-group input:focus { border-color: #3498db; }
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+    .btn { display: inline-block; padding: 9px 20px; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: #3498db; color: #fff; }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-primary:disabled { background: #bdc3c7; cursor: not-allowed; }
+    .btn-success { background: #27ae60; color: #fff; }
+    .btn-success:hover { background: #219a52; }
+    .btn-danger { background: #e74c3c; color: #fff; }
+    .btn-danger:hover { background: #c0392b; }
+    .btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; }
+    .btn-ghost:hover { background: #f5f5f5; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .status { padding: 10px; border-radius: 8px; margin-top: 10px; font-size: 13px; display: none; }
+    .status.error { display: block; background: #fdecea; color: #c0392b; }
+    .status.success { display: block; background: #e8f8f0; color: #27ae60; }
+    .status.loading { display: block; background: #ebf5fb; color: #2980b9; }
+    .tabs { display: flex; margin-bottom: 16px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .tab { flex: 1; padding: 13px; text-align: center; cursor: pointer; font-size: 13px; color: #999; border-bottom: 2px solid transparent; }
+    .tab.active { color: #3498db; border-bottom-color: #3498db; background: #f8f9fa; }
+    .hidden { display: none !important; }
+    .ddl-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+    .ddl-item:last-child { border-bottom: none; }
+    .ddl-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+    .ddl-dot.urgent { background: #e74c3c; }
+    .ddl-dot.warning { background: #f39c12; }
+    .ddl-dot.safe { background: #27ae60; }
+    .ddl-dot.done { background: #95a5a6; }
+    .ddl-dot.overdue { background: #7f8c8d; }
+    .ddl-info { flex: 1; min-width: 0; }
+    .ddl-title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ddl-title.done { text-decoration: line-through; color: #999; }
+    .ddl-course { font-size: 11px; color: #aaa; margin-top: 2px; }
+    .ddl-time { text-align: right; flex-shrink: 0; margin-left: 10px; }
+    .ddl-deadline { font-size: 12px; font-weight: 500; }
+    .ddl-countdown { font-size: 11px; margin-top: 1px; }
+    .ddl-countdown.urgent { color: #e74c3c; }
+    .ddl-countdown.warning { color: #f39c12; }
+    .ddl-countdown.safe { color: #27ae60; }
+    .ddl-countdown.done { color: #95a5a6; }
+    .ddl-actions { display: flex; gap: 4px; margin-left: 8px; flex-shrink: 0; }
+    .anxiety-bar { height: 6px; background: #ecf0f1; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+    .anxiety-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+    .anxiety-label { font-size: 12px; color: #666; margin-top: 4px; }
+    .stats { display: flex; gap: 12px; margin-bottom: 14px; }
+    .stat { flex: 1; text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px; }
+    .stat-num { font-size: 22px; font-weight: 700; }
+    .stat-num.red { color: #e74c3c; }
+    .stat-num.orange { color: #f39c12; }
+    .stat-num.green { color: #27ae60; }
+    .stat-label { font-size: 11px; color: #999; margin-top: 2px; }
+    .course-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 12px; margin: 2px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+    .course-tag.ignored { background: #f5f5f5; color: #bbb; text-decoration: line-through; border-color: #eee; }
+    .add-form { display: flex; gap: 8px; align-items: flex-end; }
+    .add-form .form-group { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📚 PKU <span>DDL</span> Helper</h1>
+
+    <!-- 登录 -->
+    <div class="card" id="loginCard">
+      <h2>🔐 教学网登录</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label>学号</label>
+          <input type="text" id="username" placeholder="学号" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="password" placeholder="密码" autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label>OTP（可选）</label>
+          <input type="text" id="otpCode" placeholder="令牌码" maxlength="6">
+        </div>
+      </div>
+      <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">登录并获取 DDL</button>
+      <div class="status" id="loginStatus"></div>
+    </div>
+
+    <!-- 主内容 -->
+    <div id="mainContent" class="hidden">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('ddl')">📋 DDL 列表</div>
+        <div class="tab" onclick="switchTab('filter')">🏷️ 课程筛选</div>
+        <div class="tab" onclick="switchTab('notion')">🔗 Notion</div>
+      </div>
+
+      <!-- DDL 列表 -->
+      <div id="ddlTab">
+        <div class="card">
+          <h2>😰 焦虑值</h2>
+          <div class="anxiety-bar"><div class="anxiety-fill" id="anxietyFill"></div></div>
+          <div class="anxiety-label" id="anxietyLabel"></div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="stat-num red" id="statUrgent">0</div><div class="stat-label">紧急 (&lt;24h)</div></div>
+          <div class="stat"><div class="stat-num orange" id="statSoon">0</div><div class="stat-label">临近 (&lt;3天)</div></div>
+          <div class="stat"><div class="stat-num green" id="statSafe">0</div><div class="stat-label">安全</div></div>
+        </div>
+
+        <!-- 手动添加 -->
+        <div class="card">
+          <h2>➕ 手动添加</h2>
+          <div class="add-form">
+            <div class="form-group" style="flex:2">
+              <input type="text" id="addTitle" placeholder="作业名称">
+            </div>
+            <div class="form-group" style="flex:1.5">
+              <input type="text" id="addCourse" placeholder="课程名（可选）">
+            </div>
+            <div class="form-group" style="flex:1.5">
+              <input type="datetime-local" id="addDeadline">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addDDL()">添加</button>
+          </div>
+          <div class="status" id="addStatus"></div>
+        </div>
+
+        <!-- 列表 -->
+        <div class="card">
+          <h2>📋 所有 DDL <span id="ddlCount"></span>
+            <button class="btn btn-ghost btn-sm" style="float:right" onclick="clearAll()">🗑️ 清空重来</button>
+          </h2>
+          <ul id="ddlList" style="list-style:none"></ul>
+        </div>
+      </div>
+
+      <!-- 课程筛选 -->
+      <div id="filterTab" class="hidden">
+        <div class="card">
+          <h2>🏷️ 按课程筛选</h2>
+          <p style="font-size:12px;color:#999;margin-bottom:12px">点击课程标签切换忽略/显示状态。被忽略的课程不会出现在列表和 Notion 同步中。</p>
+          <div id="courseTags"></div>
+        </div>
+      </div>
+
+      <!-- Notion -->
+      <div id="notionTab" class="hidden">
+        <div class="card">
+          <h2>🔗 Notion 同步</h2>
+          <div class="form-group">
+            <label>Integration Token</label>
+            <input type="text" id="notionToken" placeholder="secret_xxxxxxxxxxxxxxxxxxxxx">
+          </div>
+
+          <h2 style="margin-top:16px">方式一：一键创建数据库（推荐）</h2>
+          <p style="font-size:12px;color:#999;margin-bottom:10px">把 Token 上面填好，然后去 Notion 新建一个<strong>空白页面</strong>，复制页面 URL 中 <code>notion.so/</code> 后面那串 ID 粘贴到下方：</p>
+          <div class="form-group">
+            <label>父页面 ID（Notion 空白页面的 ID）</label>
+            <input type="text" id="parentPageId" placeholder="32位 hex，从页面 URL 复制">
+          </div>
+          <button class="btn btn-primary" onclick="createDB()">🚀 一键创建数据库</button>
+          <div class="status" id="createStatus"></div>
+
+          <h2 style="margin-top:20px">方式二：手动填写数据库 ID</h2>
+          <div class="form-group">
+            <label>数据库 ID</label>
+            <input type="text" id="databaseId" placeholder="32位 hex">
+          </div>
+          <button class="btn btn-success" id="syncBtn" onclick="doSync()">同步到 Notion</button>
+          <div class="status" id="syncStatus"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ddlData = [];
+    let ignoredCourses = new Set();
+
+    // === 登录 ===
+    async function doLogin() {
+      const btn = document.getElementById('loginBtn');
+      const status = document.getElementById('loginStatus');
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value;
+      const o = document.getElementById('otpCode').value.trim();
+
+      if (!u || !p) { showStatus(status, 'error', '请输入学号和密码'); return; }
+
+      btn.disabled = true;
+      btn.textContent = '正在获取...';
+      showStatus(status, 'loading', '正在连接教学网，可能需要 1-2 分钟...');
+
+      try {
+        const res = await api('POST', '/api/login', { username: u, password: p, otpCode: o });
+        ddlData = res.data;
+        ignoredCourses = new Set(res.ignoredCourses || []);
+        showStatus(status, 'success', `获取到 ${res.count} 个作业！`);
+        setTimeout(() => {
+          document.getElementById('loginCard').classList.add('hidden');
+          document.getElementById('mainContent').classList.remove('hidden');
+          render();
+        }, 600);
+      } catch (e) {
+        showStatus(status, 'error', e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '登录并获取 DDL';
+      }
+    }
+
+    // === 渲染 ===
+    function render() {
+      renderDDL();
+      renderFilter();
+    }
+
+    function renderDDL() {
+      const list = document.getElementById('ddlList');
+      const now = new Date();
+      const visible = ddlData.filter(d => !ignoredCourses.has(d.courseName));
+
+      let urgent = 0, soon = 0, safe = 0;
+      let html = '';
+
+      for (const ddl of visible) {
+        const deadline = ddl.deadline ? new Date(ddl.deadline) : null;
+        const isOverdue = deadline && deadline < now && !ddl.submitted;
+
+        let dotClass = 'safe', countdownClass = 'safe', countdownText = '无截止时间';
+        if (ddl.submitted) {
+          dotClass = 'done'; countdownClass = 'done'; countdownText = '✅ 已提交';
+        } else if (isOverdue) {
+          dotClass = 'overdue'; countdownClass = 'urgent'; countdownText = '❌ 已过期';
+        } else if (deadline) {
+          const h = (deadline - now) / 3600000;
+          if (h < 24) { dotClass = 'urgent'; countdownClass = 'urgent'; urgent++; countdownText = `剩余 ${fmtDelta(deadline - now)}`; }
+          else if (h < 72) { dotClass = 'warning'; countdownClass = 'warning'; soon++; countdownText = `剩余 ${fmtDelta(deadline - now)}`; }
+          else { safe++; countdownText = `剩余 ${fmtDelta(deadline - now)}`; }
+        } else { safe++; }
+
+        const dlStr = deadline ? `${deadline.getMonth()+1}/${deadline.getDate()} ${pad(deadline.getHours())}:${pad(deadline.getMinutes())}` : '无';
+
+        html += `<li class="ddl-item">
+          <div class="ddl-dot ${dotClass}"></div>
+          <div class="ddl-info">
+            <div class="ddl-title ${ddl.submitted ? 'done' : ''}">${esc(ddl.title)}</div>
+            <div class="ddl-course">${esc(ddl.courseName)}${ddl.manual ? ' · 手动' : ''}</div>
+          </div>
+          <div class="ddl-time">
+            <div class="ddl-deadline">${dlStr}</div>
+            <div class="ddl-countdown ${countdownClass}">${countdownText}</div>
+          </div>
+          <div class="ddl-actions">
+            <button class="btn btn-ghost btn-sm" onclick="toggleSubmit('${ddl.id}')" title="${ddl.submitted ? '标记未完成' : '标记已完成'}">${ddl.submitted ? '↩️' : '✅'}</button>
+            <button class="btn btn-ghost btn-sm" onclick="deleteDDL('${ddl.id}')" title="删除">🗑️</button>
+          </div>
+        </li>`;
+      }
+
+      list.innerHTML = html || '<li style="padding:20px;text-align:center;color:#999">暂无 DDL 🎉</li>';
+      document.getElementById('ddlCount').textContent = `(${visible.length})`;
+      document.getElementById('statUrgent').textContent = urgent;
+      document.getElementById('statSoon').textContent = soon;
+      document.getElementById('statSafe').textContent = safe;
+
+      // 焦虑值
+      const unfinished = visible.filter(d => !d.submitted && d.deadline);
+      let score = 0;
+      for (const d of unfinished) {
+        const h = (new Date(d.deadline) - now) / 3600000;
+        if (h < 0) score += 100;
+        else if (h < 24) score += 80 * (1 - h / 24);
+        else if (h < 72) score += 40 * (1 - h / 72);
+        else score += 10;
+      }
+      score = Math.min(100, score);
+      const fill = document.getElementById('anxietyFill');
+      fill.style.width = score + '%';
+      fill.style.background = score > 70 ? '#e74c3c' : score > 40 ? '#f39c12' : '#27ae60';
+      document.getElementById('anxietyLabel').textContent =
+        `${Math.round(score)}% — ${score > 70 ? '😱 快顶不住了！' : score > 40 ? '😰 有点紧张' : '😌 一切尽在掌握'}`;
+    }
+
+    function renderFilter() {
+      const courses = [...new Set(ddlData.map(d => d.courseName))];
+      const container = document.getElementById('courseTags');
+      container.innerHTML = courses.map(c => {
+        const ignored = ignoredCourses.has(c);
+        return `<span class="course-tag ${ignored ? 'ignored' : ''}" onclick="toggleCourse('${esc(c)}')">${ignored ? '🚫 ' : ''}${esc(c)}</span>`;
+      }).join('');
+    }
+
+    // === 操作 ===
+    async function addDDL() {
+      const title = document.getElementById('addTitle').value.trim();
+      const courseName = document.getElementById('addCourse').value.trim();
+      const deadline = document.getElementById('addDeadline').value;
+      const status = document.getElementById('addStatus');
+
+      if (!title) { showStatus(status, 'error', '请输入作业名称'); return; }
+
+      try {
+        const res = await api('POST', '/api/ddl', { title, courseName, deadline });
+        ddlData = res.data;
+        render();
+        document.getElementById('addTitle').value = '';
+        document.getElementById('addCourse').value = '';
+        document.getElementById('addDeadline').value = '';
+        showStatus(status, 'success', '已添加');
+        setTimeout(() => status.style.display = 'none', 1500);
+      } catch (e) {
+        showStatus(status, 'error', e.message);
+      }
+    }
+
+    async function deleteDDL(id) {
+      try {
+        const res = await api('DELETE', `/api/ddl/${id}`);
+        ddlData = res.data;
+        render();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function toggleSubmit(id) {
+      try {
+        const res = await api('PUT', `/api/ddl/${id}/submit`);
+        ddlData = res.data;
+        render();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function toggleCourse(name) {
+      const ignore = !ignoredCourses.has(name);
+      try {
+        const res = await api('POST', '/api/ignore-course', { courseName: name, ignore });
+        ignoredCourses = new Set(res.ignoredCourses);
+        render();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function clearAll() {
+      if (!confirm('确定要清空所有数据吗？')) return;
+      try {
+        await api('POST', '/api/clear');
+        ddlData = [];
+        ignoredCourses.clear();
+        document.getElementById('mainContent').classList.add('hidden');
+        document.getElementById('loginCard').classList.remove('hidden');
+      } catch (e) { alert(e.message); }
+    }
+
+    // === Notion 一键创建数据库 ===
+    async function createDB() {
+      const token = document.getElementById('notionToken').value.trim();
+      const parentId = document.getElementById('parentPageId').value.trim();
+      const status = document.getElementById('createStatus');
+
+      if (!token) { showStatus(status, 'error', '请填写 Token'); return; }
+      if (!parentId) { showStatus(status, 'error', '请填写父页面 ID'); return; }
+
+      showStatus(status, 'loading', '正在创建数据库...');
+
+      try {
+        const res = await api('POST', '/api/create-notion-db', { notionToken: token, parentPageId: parentId });
+        document.getElementById('databaseId').value = res.databaseId;
+        showStatus(status, 'success', `✅ 数据库已创建！ID: ${res.databaseId}`);
+      } catch (e) {
+        showStatus(status, 'error', e.message);
+      }
+    }
+
+    // === Notion 同步 ===
+    async function doSync() {
+      const btn = document.getElementById('syncBtn');
+      const status = document.getElementById('syncStatus');
+      const token = document.getElementById('notionToken').value.trim();
+      const dbId = document.getElementById('databaseId').value.trim();
+
+      if (!token || !dbId) { showStatus(status, 'error', '请填写 Token 和数据库 ID'); return; }
+
+      btn.disabled = true;
+      btn.textContent = '同步中...';
+      showStatus(status, 'loading', '正在同步...');
+
+      try {
+        const res = await api('POST', '/api/sync-notion', { notionToken: token, databaseId: dbId });
+        showStatus(status, 'success', `完成！新增 ${res.created} 条，跳过 ${res.skipped} 条`);
+      } catch (e) {
+        showStatus(status, 'error', e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '同步到 Notion';
+      }
+    }
+
+    // === Tab ===
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach((el, i) => {
+        el.classList.toggle('active', (tab === 'ddl' && i === 0) || (tab === 'filter' && i === 1) || (tab === 'notion' && i === 2));
+      });
+      document.getElementById('ddlTab').classList.toggle('hidden', tab !== 'ddl');
+      document.getElementById('filterTab').classList.toggle('hidden', tab !== 'filter');
+      document.getElementById('notionTab').classList.toggle('hidden', tab !== 'notion');
+    }
+
+    // === 工具 ===
+    async function api(method, url, body) {
+      const opts = { method, headers: {} };
+      if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      const res = await fetch(url, opts);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '请求失败');
+      return data;
+    }
+
+    function showStatus(el, type, msg) { el.className = 'status ' + type; el.textContent = msg; }
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function fmtDelta(ms) {
+      if (ms < 0) return '已过期';
+      const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+      if (d > 0) return `${d}天${h}h`;
+      if (h > 0) return `${h}h${m}m`;
+      return `${m}m`;
+    }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "pkuddl",
+  "version": "1.0.0",
+  "description": "PKU DDL Helper - 北大教学网作业DDL自动提取与Notion同步",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@notionhq/client": "^5.22.0",
+    "cheerio": "^1.2.0",
+    "express": "^5.2.1",
+    "node-fetch": "^2.7.0",
+    "tough-cookie": "^6.0.1"
+  }
+}
