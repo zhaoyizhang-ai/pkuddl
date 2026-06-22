@@ -5,10 +5,46 @@ const cheerio = require('cheerio');
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
+
+// ============================================================
+//  数据持久化
+// ============================================================
+
+const DATA_FILE = path.join(__dirname, 'data.json');
+
+function loadData() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+      return {
+        ddl: raw.ddl || [],
+        ignoredCourses: new Set(raw.ignoredCourses || []),
+        credentials: raw.credentials || null  // { username, password } 仅用于刷新
+      };
+    }
+  } catch (e) {
+    console.error('[data] load error:', e.message);
+  }
+  return { ddl: [], ignoredCourses: new Set(), credentials: null };
+}
+
+function saveData() {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify({
+      ddl: currentDDL,
+      ignoredCourses: [...ignoredCourses],
+      credentials: savedCredentials
+    }, null, 2));
+  } catch (e) {
+    console.error('[data] save error:', e.message);
+  }
+}
 
 // ============================================================
 //  原生 fetch（绕过 SSL 验证）
@@ -290,7 +326,7 @@ async function getCourseMenu(jar, courseId) {
 }
 
 // ============================================================
-//  5. 获取作业 DDL
+//  5. 获取作业/测试 DDL
 // ============================================================
 
 async function getAssignmentDeadline(jar, courseId, contentId) {
@@ -314,6 +350,36 @@ async function getAssignmentDeadline(jar, courseId, contentId) {
                         $view('h3#currentAttempt_label').text().trim() || null;
 
   return { deadlineText, submitted: !!attemptLabel, attemptLabel };
+}
+
+async function getQuizDeadline(jar, courseId, contentId) {
+  // 测试/Quiz 的入口页面
+  const url = `https://course.pku.edu.cn/webapps/assessment/take/launchAssessment?content_id=${contentId}&course_id=${courseId}&mode=view`;
+  const res = await rawFetch(url, {
+    headers: { 'Cookie': jar.toString(), 'User-Agent': 'Mozilla/5.0' }
+  });
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  // 尝试多种选择器提取截止时间
+  let deadlineText = '';
+
+  // 方式1：直接在页面中查找包含日期的文本
+  const bodyText = $('body').text();
+  const dateMatch = bodyText.match(/(\d{4}年\d{1,2}月\d{1,2}日\s*星期.\s*(?:上午|下午)\d{1,2}:\d{1,2})/);
+  if (dateMatch) {
+    deadlineText = dateMatch[1];
+  }
+
+  // 方式2：查找特定元素
+  if (!deadlineText) {
+    deadlineText = $('.dueDate, .deadline, [class*="due"], [class*="deadline"]').first().text().replace(/\s+/g, ' ').trim();
+  }
+
+  // 检查是否已提交（有尝试记录）
+  const submitted = bodyText.includes('已完成') || bodyText.includes('Attempt') || bodyText.includes('尝试');
+
+  return { deadlineText, submitted, attemptLabel: null };
 }
 
 function parseDeadline(text) {
@@ -341,16 +407,32 @@ async function getAllDDL(username, password, otpCode) {
     try {
       const menu = await getCourseMenu(jar, course.key);
       const contents = await getAllContents(jar, course.key, menu);
-      const assignments = contents.filter(c => c.kind === 'assignment');
 
-      for (const a of assignments) {
+      // 同时处理作业和测试
+      const items = contents.filter(c => c.kind === 'assignment' || c.kind === 'quiz');
+
+      for (const a of items) {
         try {
-          const { deadlineText, submitted, attemptLabel } = await getAssignmentDeadline(jar, a.courseId, a.id);
+          let deadlineText, submitted, attemptLabel;
+
+          if (a.kind === 'quiz') {
+            const result = await getQuizDeadline(jar, a.courseId, a.id);
+            deadlineText = result.deadlineText;
+            submitted = result.submitted;
+            attemptLabel = result.attemptLabel;
+          } else {
+            const result = await getAssignmentDeadline(jar, a.courseId, a.id);
+            deadlineText = result.deadlineText;
+            submitted = result.submitted;
+            attemptLabel = result.attemptLabel;
+          }
+
           const deadline = parseDeadline(deadlineText);
           allDDL.push({
             id: `${course.key}_${a.id}`,
             courseName: course.name,
             title: a.title,
+            kind: a.kind,  // 标记类型：assignment 或 quiz
             deadline: deadline ? deadline.toISOString() : null,
             deadlineText: deadlineText || '无截止时间',
             submitted,
@@ -461,8 +543,11 @@ async function createNotionDatabase(notionToken, parentPageId) {
 //  API 路由
 // ============================================================
 
-let currentDDL = [];
-let ignoredCourses = new Set();  // 被忽略的课程名
+// 从文件加载数据
+const saved = loadData();
+let currentDDL = saved.ddl;
+let ignoredCourses = saved.ignoredCourses;
+let savedCredentials = saved.credentials;  // 用于刷新
 
 // 登录并获取 DDL
 app.post('/api/login', async (req, res) => {
@@ -472,9 +557,26 @@ app.post('/api/login', async (req, res) => {
 
     console.log(`\n[api] login: ${username}`);
     currentDDL = await getAllDDL(username, password, otpCode);
+    savedCredentials = { username, password };  // 保存用于刷新
+    saveData();
     res.json({ success: true, count: currentDDL.length, data: currentDDL, ignoredCourses: [...ignoredCourses] });
   } catch (e) {
     console.error('[api] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 刷新 DDL（复用保存的凭据）
+app.post('/api/refresh', async (req, res) => {
+  try {
+    if (!savedCredentials) return res.status(400).json({ error: '请先登录' });
+
+    console.log(`\n[api] refresh: ${savedCredentials.username}`);
+    currentDDL = await getAllDDL(savedCredentials.username, savedCredentials.password, '');
+    saveData();
+    res.json({ success: true, count: currentDDL.length, data: currentDDL, ignoredCourses: [...ignoredCourses] });
+  } catch (e) {
+    console.error('[api] refresh error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -506,6 +608,7 @@ app.post('/api/ddl', (req, res) => {
     if (!b.deadline) return -1;
     return new Date(a.deadline) - new Date(b.deadline);
   });
+  saveData();
   res.json({ success: true, data: currentDDL });
 });
 
@@ -514,6 +617,7 @@ app.delete('/api/ddl/:id', (req, res) => {
   const before = currentDDL.length;
   currentDDL = currentDDL.filter(d => d.id !== req.params.id);
   if (currentDDL.length === before) return res.status(404).json({ error: '未找到该条目' });
+  saveData();
   res.json({ success: true, data: currentDDL });
 });
 
@@ -522,6 +626,7 @@ app.put('/api/ddl/:id/submit', (req, res) => {
   const item = currentDDL.find(d => d.id === req.params.id);
   if (!item) return res.status(404).json({ error: '未找到该条目' });
   item.submitted = !item.submitted;
+  saveData();
   res.json({ success: true, data: currentDDL });
 });
 
@@ -531,6 +636,7 @@ app.post('/api/ignore-course', (req, res) => {
   if (!courseName) return res.status(400).json({ error: '课程名不能为空' });
   if (ignore) ignoredCourses.add(courseName);
   else ignoredCourses.delete(courseName);
+  saveData();
   res.json({ success: true, ignoredCourses: [...ignoredCourses] });
 });
 
@@ -538,6 +644,8 @@ app.post('/api/ignore-course', (req, res) => {
 app.post('/api/clear', (req, res) => {
   currentDDL = [];
   ignoredCourses.clear();
+  savedCredentials = null;
+  saveData();
   res.json({ success: true });
 });
 

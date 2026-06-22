@@ -141,7 +141,10 @@
         <!-- 列表 -->
         <div class="card">
           <h2>📋 所有 DDL <span id="ddlCount"></span>
-            <button class="btn btn-ghost btn-sm" style="float:right" onclick="clearAll()">🗑️ 清空重来</button>
+            <div style="float:right;display:flex;gap:6px">
+              <button class="btn btn-primary btn-sm" id="refreshBtn" onclick="doRefresh()">🔄 刷新</button>
+              <button class="btn btn-ghost btn-sm" onclick="clearAll()">🗑️ 清空重来</button>
+            </div>
           </h2>
           <ul id="ddlList" style="list-style:none"></ul>
         </div>
@@ -258,7 +261,7 @@
           <div class="ddl-dot ${dotClass}"></div>
           <div class="ddl-info">
             <div class="ddl-title ${ddl.submitted ? 'done' : ''}">${esc(ddl.title)}</div>
-            <div class="ddl-course">${esc(ddl.courseName)}${ddl.manual ? ' · 手动' : ''}</div>
+            <div class="ddl-course">${esc(ddl.courseName)}${ddl.kind === 'quiz' ? ' · 📝 测试' : ''}${ddl.manual ? ' · 手动' : ''}</div>
           </div>
           <div class="ddl-time">
             <div class="ddl-deadline">${dlStr}</div>
@@ -302,6 +305,26 @@
         const ignored = ignoredCourses.has(c);
         return `<span class="course-tag ${ignored ? 'ignored' : ''}" onclick="toggleCourse('${esc(c)}')">${ignored ? '🚫 ' : ''}${esc(c)}</span>`;
       }).join('');
+    }
+
+    // === 刷新 ===
+    async function doRefresh() {
+      const btn = document.getElementById('refreshBtn');
+      btn.disabled = true;
+      btn.textContent = '刷新中...';
+
+      try {
+        const res = await api('POST', '/api/refresh');
+        ddlData = res.data;
+        ignoredCourses = new Set(res.ignoredCourses || []);
+        render();
+        btn.textContent = '✅ 已刷新';
+        setTimeout(() => { btn.textContent = '🔄 刷新'; btn.disabled = false; }, 1500);
+      } catch (e) {
+        alert(e.message);
+        btn.textContent = '🔄 刷新';
+        btn.disabled = false;
+      }
     }
 
     // === 操作 ===
